@@ -430,6 +430,19 @@ select{appearance:none;cursor:pointer;}
 
       <div id="welcome-view" class="center">
         <div class="welcome-wrap">
+          <!-- AUTO-BACKUP REMINDER BANNER -->
+          <div id="backup-reminder-banner" style="display:none;background:linear-gradient(135deg,#fff7ed,#fef3c7);border-radius:12px;padding:12px 14px;margin-bottom:12px;border:1.5px solid rgba(217,119,6,0.3);align-items:center;gap:10px;text-align:left;">
+            <div style="font-size:20px;flex-shrink:0;">💾</div>
+            <div style="flex:1;">
+              <div style="font-size:12px;font-weight:700;color:#92400e;" id="backup-reminder-msg"></div>
+              <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                <button class="btn-sm" style="background:#d97706;color:var(--white);border:none;" onclick="quickBackup()">⬇️ Download Backup Now</button>
+                <button class="btn-sm btn-ghost" style="font-size:10px;" onclick="dismissBackupReminder()">Remind me later</button>
+              </div>
+            </div>
+          </div>
+          <div id="backup-confirm-msg" style="display:none;background:var(--mint);border-radius:9px;padding:9px 13px;margin-bottom:10px;font-size:12px;font-weight:700;color:var(--mint-dark);text-align:center;">✅ Backup downloaded! Keep it somewhere safe.</div>
+
           <!-- FEATURE 9: TODAY'S PLAN from Exam Planner -->
           <div id="todays-plan-welcome" style="display:none;margin-bottom:14px;text-align:left;">
             <div class="today-plan-panel">
@@ -780,6 +793,8 @@ function showMain() {
   renderEJBadge();
   renderEJNudge();
   checkBadDayMode();
+  // Auto-backup reminder
+  checkAutoBackupReminder();
 }
 
 function showInput() {
@@ -2892,6 +2907,7 @@ function exportData() {
   const a = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+  localStorage.setItem('cv2_last_backup', new Date().toISOString().split('T')[0]);
 }
 
 function importData() {
@@ -5657,6 +5673,84 @@ function applyGenSettings(type, profName) {
 function normalizeDifficulty(questions) {
   if (!Array.isArray(questions)) return questions;
   return questions.map(q => ({ ...q, difficulty: q.difficulty || 'medium' }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTO-BACKUP REMINDER
+// ═══════════════════════════════════════════════════════════════════════════
+function checkAutoBackupReminder() {
+  const today = new Date().toISOString().split('T')[0];
+  const lastBackup = localStorage.getItem('cv2_last_backup') || '';
+  const dismissed = localStorage.getItem('cv2_backup_dismissed') || '';
+
+  // Don't show if already dismissed today
+  if (dismissed === today) return;
+
+  // Calculate days since last backup
+  const daysSince = lastBackup
+    ? Math.round((new Date(today) - new Date(lastBackup)) / 86400000)
+    : 999;
+
+  // Show reminder if: never backed up, or 3+ days since last backup
+  if (daysSince < 3) return;
+
+  // Small delay so it doesn't pop immediately on load
+  setTimeout(() => {
+    const msg = daysSince >= 999
+      ? "You've never downloaded a backup! Your study data only lives in this browser — if you switch devices or clear your browser, it's gone. 💾"
+      : `It's been ${daysSince} days since your last backup. Download one now to keep your data safe! 💾`;
+
+    const banner = document.getElementById('backup-reminder-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      const msgEl = banner.querySelector('#backup-reminder-msg');
+      if (msgEl) msgEl.textContent = msg;
+    }
+  }, 1500);
+}
+
+function quickBackup() {
+  // Build full backup with everything
+  const backup = {
+    version: "cv2_backup_v1",
+    exportedAt: new Date().toISOString(),
+    profs, qbank, anki: ankiData, srs: srsData, examPlans,
+    genConcepts: generatedConcepts, profGenConcepts: profGeneratedConcepts,
+    bank, history, mastery: masteryData, streak: streakData,
+    examDate, dailyGoal, examHistory,
+    journal: dailyJournal, errorJournal
+  };
+  // Include cached study material
+  const cache = {};
+  history.forEach(h => { const c = localStorage.getItem(h.key); if (c) cache[h.key] = c; });
+  backup.cache = cache;
+
+  const date = new Date().toLocaleDateString("en-PH",{year:"numeric",month:"2-digit",day:"2-digit"}).replace(/\//g,"-");
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `chimmy_backup_${date}.json`; a.click();
+  URL.revokeObjectURL(url);
+
+  // Save last backup date
+  localStorage.setItem('cv2_last_backup', new Date().toISOString().split('T')[0]);
+
+  // Hide banner
+  const banner = document.getElementById('backup-reminder-banner');
+  if (banner) banner.style.display = 'none';
+
+  // Show confirmation
+  const confirmEl = document.getElementById('backup-confirm-msg');
+  if (confirmEl) {
+    confirmEl.style.display = 'block';
+    setTimeout(() => { confirmEl.style.display = 'none'; }, 3000);
+  }
+}
+
+function dismissBackupReminder() {
+  localStorage.setItem('cv2_backup_dismissed', new Date().toISOString().split('T')[0]);
+  const banner = document.getElementById('backup-reminder-banner');
+  if (banner) banner.style.display = 'none';
 }
 
 
